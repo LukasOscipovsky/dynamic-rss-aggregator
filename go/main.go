@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/mmcdole/gofeed"
 )
@@ -28,6 +29,7 @@ func fetchRSS(url string) ([]Article, error) {
 		if item.PublishedParsed != nil {
 			published = *item.PublishedParsed
 		}
+
 		articles = append(articles, Article{
 			Title:       item.Title,
 			Link:        item.Link,
@@ -42,6 +44,9 @@ func fetchRSS(url string) ([]Article, error) {
 func main() {
 	r := gin.Default()
 
+	// Enable CORS
+	r.Use(cors.Default())
+
 	r.GET("/articles", func(c *gin.Context) {
 		feedURL := "https://dennikn.sk/feed"
 		articles, err := fetchRSS(feedURL)
@@ -49,6 +54,7 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
 		c.JSON(http.StatusOK, articles)
 	})
 
