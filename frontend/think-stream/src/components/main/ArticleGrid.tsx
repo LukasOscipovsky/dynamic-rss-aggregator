@@ -1,13 +1,24 @@
 import React, { useEffect, useState } from "react";
 
-function App() {
-  const [articles, setArticles] = useState([]);
+export interface Article {
+  title: string;
+  link: string;
+  description: string;
+  published: string;
+}
+
+interface ArticlesGridProps {
+  sourceUrl: string;
+}
+
+const ArticlesGrid: React.FC<ArticlesGridProps> = ({ sourceUrl }) => {
+  const [articles, setArticles] = useState<Article[]>([]);
 
   useEffect(() => {
     async function loadArticles() {
       try {
-        const response = await fetch("http://localhost:8080/articles");
-        const data = await response.json();
+        const response = await fetch(`http://localhost:8080/articles?source=${encodeURIComponent(sourceUrl)}`);
+        const data: Article[] = await response.json();
         setArticles(data);
       } catch (error) {
         console.error("Failed to fetch articles:", error);
@@ -15,23 +26,22 @@ function App() {
     }
 
     loadArticles();
-  }, []);
+  }, [sourceUrl]);
 
-  const getImage = (description) => {
+  const getImage = (description: string): string | null => {
     const match = description.match(/src="([^"]+)"/);
     return match ? match[1] : null;
   };
 
-  const stripHtml = (html) => {
+  const stripHtml = (html: string): string => {
     const tmp = document.createElement("DIV");
     tmp.innerHTML = html;
     return tmp.textContent || tmp.innerText || "";
   };
 
   return (
-    <div style={{ padding: "20px", maxWidth: "1400px", margin: "auto" }}>
-      <h1 style={{ marginBottom: "20px" }}>News Feed</h1>
-
+    <div>
+      <h1 style={{ marginBottom: "20px" }}>Articles</h1>
       <div
         style={{
           display: "grid",
@@ -41,7 +51,6 @@ function App() {
       >
         {articles.map((article, index) => {
           const image = getImage(article.description);
-
           return (
             <div
               key={index}
@@ -64,18 +73,15 @@ function App() {
                   style={{ width: "100%", height: "160px", objectFit: "cover" }}
                 />
               )}
-
               <div style={{ padding: "15px", flexGrow: 1, display: "flex", flexDirection: "column" }}>
                 <h2 style={{ fontSize: "18px", marginBottom: "10px", flexGrow: 0 }}>
                   <a href={article.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "#111" }}>
                     {article.title}
                   </a>
                 </h2>
-
                 <p style={{ flexGrow: 1, fontSize: "14px", color: "#555" }}>
                   {stripHtml(article.description).slice(0, 120)}...
                 </p>
-
                 <small style={{ marginTop: "auto", color: "#999" }}>
                   {new Date(article.published).toLocaleDateString()}
                 </small>
@@ -86,6 +92,6 @@ function App() {
       </div>
     </div>
   );
-}
+};
 
-export default App;
+export default ArticlesGrid;
