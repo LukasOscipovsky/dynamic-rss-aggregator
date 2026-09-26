@@ -1,0 +1,153 @@
+# Single-node Elasticsearch for local development in minikube.
+# Security (TLS + auth) is disabled - do not use this outside local dev.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+data:
+  discovery.type: single-node
+  xpack.security.enabled: "false"
+  xpack.security.http.ssl.enabled: "false"
+  xpack.ml.enabled: "false"
+  # Avoids needing vm.max_map_count=262144 on the minikube node
+  node.store.allow_mmap: "false"
+  ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+spec:
+  serviceName: elasticsearch-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: elasticsearch:9.5.3
+          envFrom:
+            - configMapRef:
+                name: elasticsearch-config
+          ports:
+            - name: http
+              containerPort: 9200
+            - name: transport
+              containerPort: 9300
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Headless service required by the StatefulSet for stable pod DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-headless
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+    - name: transport
+      port: 9300
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+spec:
+  # LoadBalancer + `minikube tunnel` exposes it on localhost:9200
+  type: LoadBalancer
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+---
+# Kibana UI for browsing and searching the Elasticsearch data
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+        - name: kibana
+          # Must match the Elasticsearch version
+          image: kibana:9.5.3
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch:9200
+            - name: SERVER_NAME
+              value: kibana
+            - name: TELEMETRY_OPTIN
+              value: "false"
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=768
+          ports:
+            - name: http
+              containerPort: 5601
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+spec:
+  # LoadBalancer + `minikube tunnel` exposes it on localhost:5601
+  type: LoadBalancer
+  selector:
+    app: kibana
+  ports:
+    - name: http
+      port: 5601
+      targetPort: 5601

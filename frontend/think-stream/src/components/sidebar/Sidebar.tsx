@@ -3,46 +3,67 @@ import React from "react";
 export interface Source {
   name: string;
   url: string;
+  category: string;
 }
+
+export const ALL = "__all__";
+
+// Maps a category to its accent color token defined in index.css
+export const categoryColor = (category: string): string =>
+  `var(--cat-${category.toLowerCase().replace(/\s+/g, "-")})`;
 
 interface SidebarProps {
   sources: Source[];
-  selectedSource: string;
-  onSelectSource: (url: string) => void;
+  selected: string;
+  onSelect: (key: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ sources, selectedSource, onSelectSource }) => {
+const Sidebar: React.FC<SidebarProps> = ({ sources, selected, onSelect }) => {
+  const categories = Array.from(new Set(sources.map((s) => s.category)));
+
   return (
-    <aside
-      style={{
-        borderRight: "1px solid #ddd",
-        padding: "20px",
-        background: "#f8f8f8",
-        minHeight: "100vh",
-      }}
-    >
-      <h2 style={{ marginBottom: "20px" }}>Sources</h2>
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {sources.map((source, idx) => (
-          <li key={idx} style={{ marginBottom: "10px" }}>
-            <button
-              onClick={() => onSelectSource(source.url)}
-              style={{
-                background: selectedSource === source.url ? "#111" : "#fff",
-                color: selectedSource === source.url ? "#fff" : "#111",
-                border: "1px solid #ccc",
-                borderRadius: "5px",
-                padding: "8px 12px",
-                width: "100%",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              {source.name}
-            </button>
-          </li>
-        ))}
-      </ul>
+    <aside className="sidebar">
+      <div className="brand">
+        <span className="brand-logo">◆</span>
+        Think Stream
+      </div>
+
+      <button
+        className={`nav-item all ${selected === ALL ? "active" : ""}`}
+        onClick={() => onSelect(ALL)}
+      >
+        All sources
+      </button>
+
+      {categories.map((category) => (
+        <div
+          key={category}
+          className="nav-group"
+          style={{ "--cat": categoryColor(category) } as React.CSSProperties}
+        >
+          <button
+            className={`nav-item heading ${selected === category ? "active" : ""}`}
+            onClick={() => onSelect(category)}
+          >
+            {category}
+          </button>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {sources
+              .filter((s) => s.category === category)
+              .map((source) => (
+                <li key={source.url}>
+                  <button
+                    className={`nav-item ${selected === source.url ? "active" : ""}`}
+                    onClick={() => onSelect(source.url)}
+                  >
+                    <span className="dot" />
+                    {source.name}
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ))}
     </aside>
   );
 };
