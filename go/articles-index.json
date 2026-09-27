@@ -102,6 +102,9 @@
           },
           "category": {
             "type": "keyword"
+          },
+          "country": {
+            "type": "keyword"
           }
         }
       },

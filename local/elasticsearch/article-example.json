@@ -15,7 +15,8 @@
   "source": {
     "name": "BBC World",
     "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "category": "World"
+    "category": "World",
+    "country": "GB"
   },
   "published_at": "2026-09-26T07:10:36Z",
   "fetched_at": "2026-09-26T07:15:02Z"

@@ -1,12 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/elastic/go-elasticsearch/v9"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/mmcdole/gofeed"
@@ -18,6 +25,8 @@ type Article struct {
 	Description string    `json:"description"`
 	Published   time.Time `json:"published"`
 	Source      string    `json:"source,omitempty"`
+	Category    string    `json:"category,omitempty"`
+	Country     string    `json:"country,omitempty"`
 	Image       string    `json:"image,omitempty"`
 }
 
@@ -73,51 +82,110 @@ func fetchFeed(ctx context.Context, url string) (*gofeed.Feed, error) {
 	return fp.ParseURLWithContext(url, ctx)
 }
 
-// fetchRSS fetches and parses RSS from any URL
-func fetchRSS(ctx context.Context, url string) ([]Article, error) {
-	feed, err := fetchFeed(ctx, url)
+const (
+	defaultArticlesLimit = 100
+	maxArticlesLimit     = 500
+)
+
+// searchArticles returns the newest scraped articles for the given feed URLs from Elasticsearch
+func searchArticles(ctx context.Context, es *elasticsearch.Client, sourceURLs []string, limit int) ([]Article, error) {
+	query := map[string]any{
+		"size": limit,
+		"sort": []any{map[string]any{"published_at": "desc"}},
+		"query": map[string]any{
+			"bool": map[string]any{
+				"filter": []any{map[string]any{"terms": map[string]any{"source.url": sourceURLs}}},
+			},
+		},
+		"_source": []string{"title", "link", "description", "published_at", "source.name", "source.category", "source.country", "image"},
+	}
+	body, err := json.Marshal(query)
 	if err != nil {
 		return nil, err
 	}
 
-	var articles []Article
-	for _, item := range feed.Items {
-		published := time.Now()
-		if item.PublishedParsed != nil {
-			published = *item.PublishedParsed
-		} else if item.UpdatedParsed != nil {
-			published = *item.UpdatedParsed
-		}
-
-		articles = append(articles, Article{
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description,
-			Published:   published,
-			Source:      feed.Title,
-			Image:       itemImage(item),
-		})
+	res, err := es.Search(
+		es.Search.WithContext(ctx),
+		es.Search.WithIndex(articlesAlias),
+		es.Search.WithBody(bytes.NewReader(body)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search articles: %w", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return nil, fmt.Errorf("search articles: %s", res.String())
 	}
 
+	var result struct {
+		Hits struct {
+			Hits []struct {
+				Source ArticleDoc `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode search response: %w", err)
+	}
+
+	articles := make([]Article, 0, len(result.Hits.Hits))
+	for _, hit := range result.Hits.Hits {
+		doc := hit.Source
+		articles = append(articles, Article{
+			Title:       doc.Title,
+			Link:        doc.Link,
+			Description: doc.Description,
+			Published:   doc.PublishedAt,
+			Source:      doc.Source.Name,
+			Category:    doc.Source.Category,
+			Country:     doc.Source.Country,
+			Image:       doc.Image,
+		})
+	}
 	return articles, nil
 }
 
+// newElasticsearchClient connects to ELASTICSEARCH_URL (default localhost)
+func newElasticsearchClient() (*elasticsearch.Client, error) {
+	esURL := os.Getenv("ELASTICSEARCH_URL")
+	if esURL == "" {
+		esURL = "http://localhost:9200"
+	}
+	log.Printf("elasticsearch: %s", esURL)
+	return elasticsearch.NewClient(elasticsearch.Config{Addresses: []string{esURL}})
+}
+
 func main() {
-	startScheduler(context.Background())
+	es, err := newElasticsearchClient()
+	if err != nil {
+		log.Fatalf("create elasticsearch client: %v", err)
+	}
+	startScheduler(context.Background(), es)
 
 	r := gin.Default()
 
 	// Enable CORS for frontend
 	r.Use(cors.Default())
 
+	// GET /articles?source=<feed url>[&source=<feed url>...][&limit=100]
 	r.GET("/articles", func(c *gin.Context) {
-		feedURL := c.Query("source") // get URL from query parameter
-		if feedURL == "" {
+		sources := c.QueryArray("source") // feed URLs from query parameters
+		if len(sources) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing 'source' query parameter"})
 			return
 		}
 
-		articles, err := fetchRSS(c.Request.Context(), feedURL)
+		limit := defaultArticlesLimit
+		if v := c.Query("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 || n > maxArticlesLimit {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("'limit' must be between 1 and %d", maxArticlesLimit)})
+				return
+			}
+			limit = n
+		}
+
+		articles, err := searchArticles(c.Request.Context(), es, sources, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
