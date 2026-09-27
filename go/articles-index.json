@@ -1,0 +1,119 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "analyzer": {
+        "folded": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        },
+        "folded_html": {
+          "type": "custom",
+          "char_filter": [
+            "html_strip"
+          ],
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "id": {
+        "type": "keyword"
+      },
+      "guid": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "folded",
+        "fields": {
+          "en": {
+            "type": "text",
+            "analyzer": "english"
+          },
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 512
+          }
+        }
+      },
+      "description": {
+        "type": "text",
+        "analyzer": "folded_html",
+        "fields": {
+          "en": {
+            "type": "text",
+            "analyzer": "english"
+          }
+        }
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "folded_html",
+        "fields": {
+          "en": {
+            "type": "text",
+            "analyzer": "english"
+          }
+        }
+      },
+      "link": {
+        "type": "keyword"
+      },
+      "image": {
+        "type": "keyword",
+        "index": false
+      },
+      "author": {
+        "type": "text",
+        "analyzer": "folded",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "language": {
+        "type": "keyword"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "source": {
+        "properties": {
+          "name": {
+            "type": "keyword"
+          },
+          "url": {
+            "type": "keyword"
+          },
+          "category": {
+            "type": "keyword"
+          },
+          "country": {
+            "type": "keyword"
+          }
+        }
+      },
+      "published_at": {
+        "type": "date"
+      },
+      "fetched_at": {
+        "type": "date"
+      }
+    }
+  }
+}

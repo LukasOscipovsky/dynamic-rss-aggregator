@@ -1,0 +1,16 @@
+
+kubectl apply -f postgres.yml
+kubectl port-forward svc/postgres 5432:5432
+kubectl apply -f elasticsearch.yml
+kubectl rollout status statefulset/elasticsearch
+# Exposes LoadBalancer services (elasticsearch :9200, kibana :5601) on localhost.
+# Keep it running in its own terminal.
+minikube tunnel
+# curl localhost:9200
+
+# Articles index: template + versioned index behind the "articles" alias
+curl -XPUT localhost:9200/_index_template/articles -H 'Content-Type: application/json' -d @elasticsearch/articles-template.json
+curl -XPUT localhost:9200/articles-v1
+curl -XPOST localhost:9200/_aliases -H 'Content-Type: application/json' -d '{"actions":[{"add":{"index":"articles-v1","alias":"articles","is_write_index":true}}]}'
+kubectl rollout status deployment/kibana
+# open http://localhost:5601
